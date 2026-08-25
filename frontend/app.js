@@ -1,291 +1,234 @@
 const BASE = (window.BACKEND_URL && String(window.BACKEND_URL).replace(/\/$/, '')) || ''
-const api = (path, opts = {}) => {
-  const username = document.getElementById('username').value || 'alice'
-  const headers = opts.headers || {}
-  headers['x-user'] = username
-  const url = BASE + path
-  return fetch(url, { ...opts, headers })
-}
-
+const $ = id => document.getElementById(id)
 let currentDoc = null
+let saveTimer = null
 
-// initialize Quill editor
-const quill = new Quill('#editor', {
-  theme: 'snow',
-  modules: { toolbar: '#toolbar' }
-})
+const quill = new Quill('#editor', { theme: 'snow', modules: { toolbar: '#toolbar' } })
 
-function setDocTitle(title) {
-  document.getElementById('docTitle').value = title
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}), 'x-user': $('username').value }
+  const response = await fetch(BASE + path, { ...options, headers })
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`
+    try { message = (await response.json()).detail || message } catch (_) {}
+    throw new Error(message)
+  }
+  return response.json()
 }
 
-function setLastOpenDoc(id) {
-  try { if (id == null) localStorage.removeItem('lastOpenDocId'); else localStorage.setItem('lastOpenDocId', String(id)) } catch(e) {}
+function setStatus(message, isError = false) {
+  $('status').textContent = message
+  $('status').style.color = isError ? '#b3261e' : '#5f6368'
 }
 
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (s) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[s])
+function form(fields) {
+  const data = new FormData()
+  Object.entries(fields).forEach(([key, value]) => data.append(key, value))
+  return data
+}
+
+function setEditorAccess(doc) {
+  const owned = doc && doc.access_role === 'owner'
+  quill.enable(Boolean(owned))
+  $('docTitle').disabled = !owned
+  $('shareBtn').disabled = !owned
+  const notice = $('notice')
+  if (!doc) {
+    notice.textContent = `Create a new document or choose one from the sidebar. Only a document's owner can share it.`
+    notice.style.display = 'block'
+  } else if (!owned) {
+    notice.textContent = `View only — shared by ${doc.owner_username}`
+    notice.style.display = 'block'
+  } else {
+    notice.style.display = 'none'
+  }
+}
+
+function renderSection(tabs, label, docs) {
+  const heading = document.createElement('li')
+  heading.className = 'section-label'
+  heading.textContent = label
+  tabs.appendChild(heading)
+  if (!docs.length) {
+    const empty = document.createElement('li')
+    empty.textContent = 'No documents yet'
+    empty.style.color = '#777'
+    tabs.appendChild(empty)
+  }
+  docs.forEach(doc => {
+    const row = document.createElement('li')
+    row.dataset.id = doc.id
+    row.classList.toggle('active', currentDoc && currentDoc.id === doc.id)
+    const title = document.createElement('strong')
+    title.textContent = doc.title
+    const meta = document.createElement('span')
+    meta.className = 'doc-meta'
+    meta.textContent = label === 'Owned by me' ? 'Owner' : `Shared by ${doc.owner_username}`
+    row.append(title, meta)
+    row.onclick = () => loadDoc(doc.id)
+    tabs.appendChild(row)
+  })
 }
 
 async function loadDocs() {
-  const res = await api('/api/docs')
-  if (!res.ok) { alert('Failed to load docs'); return }
-  const data = await res.json()
-  const tabs = document.getElementById('tabs')
-  tabs.innerHTML = ''
-  const addTabItem = (d) => {
-    const li = document.createElement('li')
-    li.textContent = d.title
-    li.dataset.id = d.id
-    li.addEventListener('click', async () => {
-      await loadDoc(d.id)
-    })
-    tabs.appendChild(li)
-  }
-  data.owned.forEach(addTabItem)
-  data.shared.forEach(addTabItem)
+  try {
+    const data = await api('/api/docs')
+    const tabs = $('tabs')
+    tabs.innerHTML = ''
+    renderSection(tabs, 'Owned by me', data.owned)
+    renderSection(tabs, 'Shared with me', data.shared)
+  } catch (error) { setStatus(error.message, true) }
 }
 
 async function loadDoc(id) {
-  const res = await api('/api/docs/' + id)
-  if (!res.ok) { alert('Error loading document'); return }
-  const doc = await res.json()
-  currentDoc = doc
-  setDocTitle(doc.title)
-  // doc.content is HTML
-  quill.root.innerHTML = doc.content
-  setLastOpenDoc(doc.id)
+  try {
+    currentDoc = await api(`/api/docs/${id}`)
+    $('docTitle').value = currentDoc.title
+    quill.root.innerHTML = currentDoc.content
+    setEditorAccess(currentDoc)
+    localStorage.setItem(`lastDoc:${$('username').value}`, String(id))
+    setStatus(currentDoc.access_role === 'owner' ? 'Saved' : 'View only')
+    await loadDocs()
+  } catch (error) { setStatus(error.message, true) }
 }
 
-document.getElementById('loadDocs').onclick = loadDocs
-
-document.getElementById('newDoc').onclick = async () => {
-  const title = prompt('Document title') || 'Untitled document'
-  const content = '<p></p>'
-  const form = new FormData()
-  form.append('title', title)
-  form.append('content', content)
-  const res = await api('/api/docs', { method: 'POST', body: form })
-  if (!res.ok) { alert('Failed to create'); return }
-  const doc = await res.json()
-  currentDoc = doc
-  setDocTitle(doc.title)
-  quill.root.innerHTML = doc.content
-  setLastOpenDoc(doc.id)
-  loadDocs()
+async function createDocument(title = 'Untitled document', content = '<p><br></p>') {
+  try {
+    currentDoc = await api('/api/docs', { method: 'POST', body: form({ title, content }) })
+    await loadDoc(currentDoc.id)
+  } catch (error) { setStatus(error.message, true) }
 }
 
-document.getElementById('docTitle').addEventListener('change', async (e) => {
-  if (!currentDoc) return
-  const title = e.target.value
-  const form = new FormData()
-  form.append('title', title)
-  form.append('content', quill.root.innerHTML)
-  const res = await api('/api/docs/' + currentDoc.id, { method: 'PUT', body: form })
-  if (!res.ok) { alert('Rename failed'); return }
-  currentDoc = await res.json()
-  loadDocs()
-})
+async function saveDocument() {
+  if (!currentDoc || currentDoc.access_role !== 'owner') return
+  setStatus('Saving…')
+  try {
+    currentDoc = await api(`/api/docs/${currentDoc.id}`, {
+      method: 'PUT', body: form({ title: $('docTitle').value, content: quill.root.innerHTML })
+    })
+    setStatus('Saved')
+    await loadDocs()
+  } catch (error) { setStatus(error.message, true) }
+}
 
-// Save button
-document.getElementById('shareBtn').addEventListener('click', async () => {
-  if (!currentDoc) { alert('Select or create a document first'); return }
-  // share modal simplified: share with 'bob'
-  const username = prompt('Share with user (username)', 'bob')
-  if (!username) return
-  const form = new FormData()
-  form.append('username', username)
-  const res = await api('/api/docs/' + currentDoc.id + '/share', { method: 'POST', body: form })
-  if (!res.ok) { alert('Share failed'); return }
-  alert('Shared with ' + username)
-})
-
-document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('fileInput').click())
-
-document.getElementById('fileInput').addEventListener('change', async (e) => {
-  const f = e.target.files[0]
-  if (!f) return
-  const form = new FormData()
-  form.append('file', f)
-  const res = await api('/api/upload', { method: 'POST', body: form })
-  if (!res.ok) { alert('Upload failed'); return }
-  const doc = await res.json()
-  currentDoc = doc
-  setDocTitle(doc.title)
-  quill.root.innerHTML = doc.content
-  setLastOpenDoc(doc.id)
-  loadDocs()
-})
-
-// Save current document content (autosave debounce)
-let saveTimer = null
 function scheduleSave() {
-  if (!currentDoc) return
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
-    const form = new FormData()
-    form.append('title', document.getElementById('docTitle').value)
-    form.append('content', quill.root.innerHTML)
-    await api('/api/docs/' + currentDoc.id, { method: 'PUT', body: form })
-  }, 1000)
+  if (!currentDoc || currentDoc.access_role !== 'owner') return
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(saveDocument, 700)
 }
 
+$('newDoc').onclick = () => createDocument()
+$('newFile').onclick = () => createDocument()
+$('docTitle').addEventListener('input', scheduleSave)
 quill.on('text-change', scheduleSave)
 
-// initial
-loadDocs()
-
-// Menu toggle logic
-function setupMenus() {
-  const mappings = [
-    {btn: 'fileMenu', drop: 'fileDropdown'},
-    {btn: 'editMenu', drop: 'editDropdown'},
-    {btn: 'viewMenu', drop: 'viewDropdown'}
-  ]
-  mappings.forEach(m => {
-    const b = document.getElementById(m.btn)
-    const d = document.getElementById(m.drop)
-    if (!b || !d) return
-    b.addEventListener('click', (e) => {
-      e.stopPropagation()
-      // hide others
-      document.querySelectorAll('.menu-dropdown').forEach(x=>{ if (x!==d) x.style.display='none'})
-      d.style.display = d.style.display === 'block' ? 'none' : 'block'
-    })
-  })
-  // click elsewhere closes menus
-  document.addEventListener('click', () => document.querySelectorAll('.menu-dropdown').forEach(x=>x.style.display='none'))
+$('username').onchange = async () => {
+  clearTimeout(saveTimer)
+  currentDoc = null
+  $('docTitle').value = 'Untitled document'
+  quill.setContents([])
+  setEditorAccess(null)
+  $('avatar').textContent = $('username').value.charAt(0).toUpperCase()
+  await loadDocs()
+  const last = localStorage.getItem(`lastDoc:${$('username').value}`)
+  if (last) await loadDoc(last)
 }
 
-setupMenus()
+$('shareBtn').onclick = () => {
+  if (!currentDoc) return setStatus('Create or open a document first', true)
+  $('shareDocTitle').textContent = currentDoc.title
+  $('shareUser').value = $('username').value === 'alice' ? 'bob' : 'alice'
+  $('shareMessage').textContent = ''
+  $('shareDialog').showModal()
+}
 
-// Menu actions
-document.getElementById('downloadDoc').addEventListener('click', () => {
-  if (!currentDoc) { alert('No document selected'); return }
-  const blob = new Blob([currentDoc.content], {type:'text/html'})
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = (currentDoc.title || 'document') + '.html'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-})
-
-document.getElementById('renameFile').addEventListener('click', async () => {
-  if (!currentDoc) { alert('Select a document first'); return }
-  const name = prompt('Rename document', currentDoc.title)
-  if (!name) return
-  const form = new FormData()
-  form.append('title', name)
-  form.append('content', quill.root.innerHTML)
-  const res = await api('/api/docs/' + currentDoc.id, { method: 'PUT', body: form })
-  if (!res.ok) { alert('Rename failed'); return }
-  currentDoc = await res.json()
-  setDocTitle(currentDoc.title)
-  loadDocs()
-})
-
-// Wire additional File menu actions: New, Open (recent), Download (plain text), Make a copy
-document.getElementById('newFile').addEventListener('click', () => document.getElementById('newDoc').click())
-
-document.getElementById('openFile').addEventListener('click', async () => {
-  // populate recent docs list inside the file dropdown for direct open
-  const res = await api('/api/docs')
-  if (!res.ok) { alert('Failed to load docs'); return }
-  const data = await res.json()
-  const all = [...data.owned, ...data.shared]
-  const listEl = document.getElementById('fileRecentList')
-  listEl.innerHTML = ''
-  if (!all.length) {
-    listEl.innerHTML = '<div style="padding:8px;color:#666">No documents available</div>'
-    return
-  }
-  // show up to 20 recent
-  all.slice(0,20).forEach(d => {
-    const row = document.createElement('div')
-    row.className = 'recent-item'
-    row.style.padding = '8px'
-    row.style.cursor = 'pointer'
-    row.style.borderRadius = '6px'
-    row.style.marginBottom = '4px'
-    row.innerHTML = `<strong style="display:block">${escapeHtml(d.title)}</strong><small style="color:#666">owner: ${escapeHtml(String(d.owner_id))}</small>`
-    row.addEventListener('click', async (e) => {
-      e.stopPropagation()
-      await loadDoc(d.id)
-      // hide dropdown
-      document.querySelectorAll('.menu-dropdown').forEach(x=>x.style.display='none')
+function closeShareDialog() { $('shareDialog').close() }
+$('closeShare').onclick = closeShareDialog
+$('cancelShare').onclick = closeShareDialog
+$('shareDialog').onclick = event => { if (event.target === $('shareDialog')) closeShareDialog() }
+$('shareForm').onsubmit = async event => {
+  event.preventDefault()
+  const username = $('shareUser').value
+  $('confirmShare').disabled = true
+  $('confirmShare').textContent = 'Sharing…'
+  try {
+    const result = await api(`/api/docs/${currentDoc.id}/share`, {
+      method: 'POST', body: form({ username })
     })
-    listEl.appendChild(row)
-  })
-})
-
-document.getElementById('downloadFile').addEventListener('click', () => {
-  if (!currentDoc) { alert('No document selected'); return }
-  // download plain text version
-  const text = quill.getText()
-  const blob = new Blob([text], {type:'text/plain'})
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = (currentDoc.title || 'document') + '.txt'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-})
-
-document.getElementById('makeCopy').addEventListener('click', async () => {
-  if (!currentDoc) { alert('Select a document to copy'); return }
-  const title = 'Copy of ' + (currentDoc.title || 'document')
-  const form = new FormData()
-  form.append('title', title)
-  form.append('content', currentDoc.content)
-  const res = await api('/api/docs', { method: 'POST', body: form })
-  if (!res.ok) { alert('Failed to make a copy'); return }
-  const doc = await res.json()
-  currentDoc = doc
-  setDocTitle(doc.title)
-  quill.root.innerHTML = doc.content
-  setLastOpenDoc(doc.id)
-  await loadDocs()
-  alert('Copy created')
-})
-
-// initial - load docs then reopen last-open document if present
-async function init() {
-  await loadDocs()
-  const last = (function(){ try { return localStorage.getItem('lastOpenDocId') } catch(e){ return null } })()
-  if (last) {
-    // try to load; ignore errors
-    try { await loadDoc(last) } catch(e){}
+    setStatus(result.already_shared ? `Already shared with ${username}` : `Shared with ${username}`)
+    $('shareMessage').style.color = '#15803d'
+    $('shareMessage').textContent = result.already_shared ? `${username} already has access.` : `${username} now has view access.`
+    setTimeout(closeShareDialog, 700)
+  } catch (error) {
+    $('shareMessage').style.color = '#b91c1c'
+    $('shareMessage').textContent = error.message
+    setStatus(error.message, true)
+  } finally {
+    $('confirmShare').disabled = false
+    $('confirmShare').textContent = 'Grant access'
   }
 }
-init()
 
-document.getElementById('undoBtn').addEventListener('click', () => { quill.history.undo() })
-document.getElementById('redoBtn').addEventListener('click', () => { quill.history.redo() })
+$('uploadBtn').onclick = () => $('fileInput').click()
+$('fileInput').onchange = async event => {
+  const file = event.target.files[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('file', file)
+  try {
+    currentDoc = await api('/api/upload', { method: 'POST', body })
+    await loadDoc(currentDoc.id)
+  } catch (error) { setStatus(error.message, true) }
+  event.target.value = ''
+}
 
-document.getElementById('pastePlainBtn').addEventListener('click', () => {
-  navigator.clipboard.readText().then(text => document.execCommand('insertText', false, text)).catch(()=>alert('Paste failed'))
-})
+function download(type) {
+  if (!currentDoc) return setStatus('Open a document first', true)
+  const html = type === 'text/html'
+  const blob = new Blob([html ? quill.root.innerHTML : quill.getText()], { type })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `${currentDoc.title}.${html ? 'html' : 'txt'}`
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
 
-document.getElementById('findReplaceBtn').addEventListener('click', () => {
+$('downloadDoc').onclick = () => download('text/html')
+$('downloadFile').onclick = () => download('text/plain')
+$('renameFile').onclick = () => { if ($('docTitle').disabled) return; $('docTitle').focus(); $('docTitle').select() }
+$('makeCopy').onclick = () => currentDoc && createDocument(`Copy of ${currentDoc.title}`, quill.root.innerHTML)
+$('openFile').onclick = () => setStatus('Choose a document from the sidebar')
+$('undoBtn').onclick = () => quill.history.undo()
+$('redoBtn').onclick = () => quill.history.redo()
+$('pasteBtn').onclick = () => setStatus('Use Ctrl/Cmd+V to paste')
+$('pastePlainBtn').onclick = () => setStatus('Use Ctrl/Cmd+Shift+V to paste without formatting')
+$('findReplaceBtn').onclick = () => {
   const find = prompt('Find text')
   if (!find) return
-  const replace = prompt('Replace with (leave empty to only find)')
-  const content = quill.root.innerHTML
-  const newContent = content.split(find).join(replace || find)
-  quill.root.innerHTML = newContent
-  scheduleSave()
-})
+  const replacement = prompt('Replace with', '')
+  const text = quill.getText()
+  quill.setText(text.split(find).join(replacement ?? ''))
+}
+$('fullscreenBtn').onclick = () => document.fullscreenElement ? document.exitFullscreen() : $('page').requestFullscreen()
+let zoom = 1
+$('zoomIn').onclick = () => { zoom = Math.min(1.5, zoom + 0.1); $('page').style.zoom = zoom }
+$('zoomOut').onclick = () => { zoom = Math.max(0.7, zoom - 0.1); $('page').style.zoom = zoom }
 
-document.getElementById('fullscreenBtn').addEventListener('click', () => {
-  const el = document.getElementById('page')
-  if (!document.fullscreenElement) {
-    el.requestFullscreen?.()
-  } else {
-    document.exitFullscreen?.()
+document.querySelectorAll('.menu').forEach(menu => {
+  const button = menu.querySelector(':scope > button')
+  const dropdown = menu.querySelector('.menu-dropdown')
+  button.onclick = event => {
+    event.stopPropagation()
+    document.querySelectorAll('.menu-dropdown').forEach(item => { if (item !== dropdown) item.style.display = 'none' })
+    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block'
   }
 })
+document.addEventListener('click', () => document.querySelectorAll('.menu-dropdown').forEach(item => { item.style.display = 'none' }))
+
+async function init() {
+  setEditorAccess(null)
+  await loadDocs()
+  const last = localStorage.getItem(`lastDoc:${$('username').value}`)
+  if (last) await loadDoc(last)
+}
+init()

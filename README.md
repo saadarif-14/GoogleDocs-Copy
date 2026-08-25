@@ -1,23 +1,20 @@
-# Collaborative Editor — Demo
+# Papertrail
 
-This repository contains a lightweight collaborative document editor (FastAPI backend, Quill frontend). This README explains how to run locally and how to deploy.
+Papertrail is a small full-stack document editor built with FastAPI, SQLite, Quill, and plain JavaScript. It supports creating, renaming, rich-text editing, autosaving and reopening documents; importing files; and owner-controlled, view-only sharing.
 
-Local quickstart (Docker Compose)
+## Run locally
 
-1. Build and start using Docker Compose:
+### Docker (recommended)
+
 ```bash
-docker compose build
-docker compose up -d
+docker compose up --build
 ```
-2. Open the app in your browser:
 
-- Local URL: http://127.0.0.1:8001/ (container maps host port 8001 → container 8000)
+Open <http://127.0.0.1:8001>. SQLite data is persisted in `backend/data/app.db` through the Compose volume.
 
-Notes:
-- The SQLite database is persisted to `backend/data` via the compose volume mapping.
-- If port 8001 is in use, adjust `docker-compose.yml` or stop the local server running on 8000.
+### Python
 
-Run without Docker (Python venv)
+Python 3.10 or newer is required.
 
 ```bash
 python3 -m venv .venv
@@ -26,74 +23,43 @@ pip install -r backend/requirements.txt
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Frontend configuration
+Open <http://127.0.0.1:8000>. The app creates and seeds the database automatically.
 
-- To point the frontend at a remote backend, add a `frontend/config.js` file that sets `window.BACKEND_URL` before `app.js` is loaded. Example in the repository notes.
+## Demo workflow
 
-Deployment recommendations
+1. Use the user switcher to act as seeded user `alice`.
+2. Create a document and format it with headings, bold, italic, underline, or lists. Changes autosave after a short delay.
+3. Select **Share**, enter `bob`, then switch users. The document appears under **Shared with me** and is visibly view-only.
+4. Select **Import** to turn a UTF-8 `.txt` or `.md` file into a document. Imports are limited to 1 MB; other file types are rejected.
 
-- Recommended path: host the backend on Render / Railway / Fly.io (Postgres recommended for production) and deploy static frontend on Vercel.
-- Alternatively, build and push the Docker image to Docker Hub and run on any container host (DigitalOcean, AWS ECS, etc.).
+Authentication is intentionally mocked with an `x-user` request header and the two seeded accounts, `alice` and `bob`. It demonstrates authorization boundaries but is not production authentication.
 
-Deploying the frontend to Vercel (step-by-step)
-
-1. In the Vercel dashboard click "New Project" and import your Git repository.
-2. Set the **Project Root** to `frontend` (so Vercel deploys the static site in that folder).
-3. (Optional) Edit `frontend/config.js` in your repo to set `window.BACKEND_URL = 'https://your-backend.example.com'` before pushing, or modify the file after deploy.
-4. Deploy — Vercel will publish a live URL. If your backend is hosted elsewhere, set `BACKEND_URL` to point to it.
-
-Notes about configuring `BACKEND_URL`
-
-- Because Vercel environment variables are injected at build time, the simplest approach is to commit the production value into `frontend/config.js` or serve a small server-side rewrite. Alternatively, you can host a tiny `config.js` on the backend and fetch it at runtime.
-
-
-Files of interest
-
-- `backend/` — FastAPI app, models, DB helpers
-- `frontend/` — static frontend (Quill editor, JS)
-- `Dockerfile`, `docker-compose.yml` — container setup
-# Collaborative Document Editor (Demo)
-
-This is a lightweight demo of a collaborative document editor with:
-- Create, rename, edit, save, and reopen documents
-- Basic rich-text editing (Quill) with bold/italic/underline/headings/lists
-- File upload/import for `.md` and `.txt`
-- Simple sharing model (owner + shared users)
-- Persistence with SQLite (local)
-
-Quick start (backend):
+## Test
 
 ```bash
-# create venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-# seed DB
-python -m backend.app.seed
-# run server
-uvicorn backend.app.main:app --reload --port 8000
+pytest -q
 ```
 
-Open the app in a browser (the backend serves the frontend at root):
+The API tests cover rich-text persistence, rename/reopen behavior, sharing visibility, recipient write protection, duplicate sharing, Markdown import, validation, authentication, and frontend serving.
 
-```
-http://127.0.0.1:8000/
-```
+## Deployment
 
-The frontend is a minimal spreadsheet-like UI (Google Sheets style demo) implemented with a contenteditable grid. It supports editing cells, adding rows/columns, importing CSV, saving sheets as documents, and sharing with seeded users (`alice`, `bob`).
-
-Seeded users: `alice`, `bob`.
-
-Testing:
+The Docker image is deployment-ready for a single persistent instance:
 
 ```bash
-pip install -r backend/requirements.txt
-pytest
+docker build -t papertrail .
+docker run -p 8000:8000 -v papertrail-data:/app/backend/data papertrail
 ```
 
-Notes:
-- File imports only support `.md` and `.txt`.
-- Auth is mocked via the `x-user` header (UI sets this).
+Deploy that image to Render, Railway, Fly.io, or another container host and attach a persistent volume at `/app/backend/data`. Then use the platform's public HTTPS URL. A live reviewer URL cannot be created from this repository alone because it requires access to a hosting account; the exact container command above is the supported deployment path.
 
-AI Usage Note:
-- I used coding assistance to draft repetitive scaffolding and generate example API patterns; I reviewed and adjusted logic, fixed edge cases, and wrote the tests and README manually.
+For multi-instance production deployment, replace SQLite with Postgres, restrict CORS, pin dependencies, serve Quill locally or with an integrity-pinned asset, and replace mock auth with session or token authentication.
+
+## Project map
+
+- `backend/app/main.py` — API, access checks, validation, upload conversion, static serving
+- `backend/app/models.py` — users, documents, and unique shares
+- `backend/app/db.py` — SQLite engine and schema creation
+- `frontend/` — Quill editor and application UI
+- `tests/test_docs.py` — end-to-end API tests
+- `ARCHITECTURE.md` — priorities, tradeoffs, and extension path

@@ -1,28 +1,26 @@
-# Architecture Note
+# Architecture
 
-Overview
+## Shape
 
-The system is a small two-tier web app:
+Papertrail is deliberately a two-tier application. FastAPI serves both a small static Quill client and a REST API. SQLModel stores users, HTML document content, and document-to-user shares in SQLite. Keeping one deployable service makes the reviewer workflow reliable while still placing persistence and authorization on the server.
 
-- Frontend: Static site using Quill (rich-text editor) and plain JavaScript. Served from `/static` by the FastAPI backend in this repository. The frontend calls backend REST endpoints under `/api`.
-- Backend: FastAPI application using SQLModel (SQLite by default) for persistence. Provides endpoints to list, create, read, update, share documents, and an upload endpoint that accepts `.md` and `.txt` files and converts them to HTML.
+The browser sends the selected seeded username in `x-user`. Every document endpoint resolves that user and checks ownership or an explicit share. Owners can edit and share; recipients have view-only access. The API returns `access_role` and `owner_username`, allowing the client to communicate the same boundary without treating UI controls as security.
 
-Key components
+## Priorities
 
-- `backend/app/main.py`: FastAPI app, CORS config, static mount, API endpoints.
-- `backend/app/models.py`: SQLModel models for `User`, `Document`, and `Share`.
-- `backend/app/db.py`: Engine configuration and `init_db()` that creates schema.
-- `frontend/index.html`, `frontend/app.js`: UI and client logic.
-- `Dockerfile` / `docker-compose.yml`: Containerization and local orchestration.
+1. **A complete editing loop.** Quill provides accessible rich-text controls, HTML is persisted without flattening structure, and a 700 ms debounce autosaves edits. A per-user last-document key supports reopen after refresh.
+2. **Visible, enforced sharing.** Owned and shared documents occupy separate sidebar sections. The UI disables editing for a recipient, while the backend independently rejects recipient updates.
+3. **Product-relevant import.** UTF-8 Markdown is converted to HTML and plain text is HTML-escaped. The 1 MB limit bounds memory use; unsupported types and encodings produce clear errors.
+4. **Small operational surface.** One container and one persistent SQLite volume are sufficient for this scope. API tests exercise the permissions and persistence contract rather than only isolated helpers.
 
-Design notes
+## Data model
 
-- Authentication: Simple mock auth using `x-user` header (seeded users). Replace with real auth for production.
-- Persistence: SQLite persists to `backend/data/app.db`. For multiple-instance or production, migrate to Postgres and set a `DATABASE_URL` env var.
-- Static serving: Frontend is served by the backend at `/static`. For scalability, serve the frontend from a static CDN (Vercel, Netlify) and point it to the backend via `BACKEND_URL`.
+- `User`: unique seeded username.
+- `Document`: title, rich-text HTML, owner, and timestamps.
+- `Share`: unique `(doc_id, user_id)` grant. A grant means view access.
 
-Scaling and production
+## Intentional tradeoffs
 
-- Swap SQLite for Postgres and use a managed DB (AWS RDS, Render Postgres). Update `backend/app/db.py` to use `DATABASE_URL`.
-- Add HTTPS, secrets management, and proper auth (OAuth/JWT).
-- Use a process manager (gunicorn/uvicorn) behind an ingress (Traefik/nginx) or deploy to a managed platform.
+Mock authentication is suitable only for demonstrating user boundaries; headers can be forged. Stored editor HTML is trusted in this demo and should be sanitized before displaying content from untrusted users. SQLite suits one application instance but not horizontal scaling. Real-time co-editing and revision history are outside the requested scope.
+
+A production evolution would add real identity, CSRF protection, HTML sanitization, Postgres migrations, object storage for attachments, dependency pinning, observability, and revision/version records.

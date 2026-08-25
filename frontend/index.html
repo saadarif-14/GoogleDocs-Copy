@@ -1,138 +1,135 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Collaborative Editor - Page Layout Demo</title>
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <style>
-      :root { --sidebar-width: 220px; --page-width: 800px }
-      body { font-family: Arial, Helvetica, sans-serif; margin: 0; background:#f1f3f4 }
-      #appHeader { height:72px; display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:white; box-shadow:0 1px 0 rgba(0,0,0,0.08); position:relative }
-      #appHeader .left { display:flex; align-items:center; gap:8px }
-      #appHeader input { font-size:16px; padding:6px 8px; border-radius:6px; border:1px solid #e0e0e0; margin-left:2px }
-      #main { display:flex; gap:16px; padding:20px }
-      #sidebar { width:var(--sidebar-width); background:transparent }
-      #sidebar .tabs-header { font-weight:600; margin-bottom:8px }
-      #tabs { list-style:none; padding:0 }
-      #tabs li { background:#fff; padding:10px; margin-bottom:8px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.06); cursor:pointer }
-      #docArea { flex:1; display:flex; flex-direction:column; align-items:center }
-      #toolbar { width:var(--page-width); background:#fff; padding:8px 12px; border-radius:6px 6px 0 0; box-shadow:0 1px 0 rgba(0,0,0,0.06); display:flex; gap:8px }
-      .menu { position:relative; display:inline-block }
-      .menu-dropdown { display:none; position:absolute; top:56px; left:0; background:white; box-shadow:0 6px 20px rgba(60,64,67,0.15); border-radius:6px; padding:8px; min-width:180px; z-index:40 }
-      .menu .menu-item { display:block; width:100%; padding:8px 10px; text-align:left; border:none; background:transparent }
-      .menu .menu-item:hover { background:#f6f9ff }
-      .menu-sep { height:1px; background:#eee; margin:6px 0 }
-      .doc-icon { width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; margin-right:6px }
-      .doc-icon svg { width:32px; height:32px }
-      #titleNav { background:transparent; padding:4px 20px 0 20px; margin-top:-6px; position:relative; z-index:20 }
-      #appHeader .center { display:flex; align-items:center; gap:12px }
-      #titleNavInner { max-width:var(--page-width); margin:0 auto }
-      .menu-row { display:flex; gap:12px; align-items:center; margin-bottom:6px }
-      .pill-row { display:flex; gap:8px }
-      .pill { background:#f1f3f4; border-radius:20px; padding:6px 10px; border:none; margin-right:8px }
-      #pageContainer { width:var(--page-width); display:flex; justify-content:center; padding:18px 0 }
-      #page { background:white; width:100%; min-height:600px; padding:48px 64px; box-shadow:0 2px 8px rgba(60,64,67,0.15); border-radius:4px }
-      #editor { min-height:400px }
-      button { cursor:pointer }
-    </style>
-  </head>
-  <body>
-    <div id="appHeader">
-      <div class="left">
-        <div class="doc-icon" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 2h7l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#1a73e8"/>
-            <path d="M13 2v6h6" fill="#e8f0fe"/>
-            <path d="M8 12h8v1H8z" fill="white" opacity="0.9"/>
-            <path d="M8 15h8v1H8z" fill="white" opacity="0.9"/>
-          </svg>
-        </div>
-        <input id="docTitle" value="Untitled document" />
-      </div>
-      <div class="center">
-        <div class="menu-row">
-          <div class="menu">
-            <button id="fileMenu">File</button>
-            <div class="menu-dropdown" id="fileDropdown">
-              <button class="menu-item" id="newFile">New</button>
-              <button class="menu-item" id="openFile">Open</button>
-              <button class="menu-item" id="downloadFile">Download</button>
-              <div class="menu-sep"></div>
-              <button class="menu-item" id="renameFile">Rename</button>
-              <div class="menu-sep"></div>
-              <button class="menu-item" id="makeCopy">Make a copy</button>
-              <button class="menu-item" id="downloadDoc">Download as HTML</button>
-              <div id="fileRecentList" style="margin-top:8px; max-height:240px; overflow:auto;"></div>
-            </div>
-          </div>
-          <div class="menu">
-            <button id="editMenu">Edit</button>
-            <div class="menu-dropdown" id="editDropdown">
-              <button class="menu-item" id="undoBtn">Undo</button>
-              <button class="menu-item" id="redoBtn">Redo</button>
-              <div class="menu-sep"></div>
-              <button class="menu-item" id="pasteBtn">Paste</button>
-              <button class="menu-item" id="pastePlainBtn">Paste without formatting</button>
-              <div class="menu-sep"></div>
-              <button class="menu-item" id="findReplaceBtn">Find and replace</button>
-            </div>
-          </div>
-          <div class="menu">
-            <button id="viewMenu">View</button>
-            <div class="menu-dropdown" id="viewDropdown">
-              <button class="menu-item" id="fullscreenBtn">Full screen</button>
-              <button class="menu-item" id="zoomIn">Zoom in</button>
-              <button class="menu-item" id="zoomOut">Zoom out</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="right">
-        <label>User: <input id="username" value="alice" /></label>
-        <button id="loadDocs">Load Docs</button>
-        <button id="newDoc">New Doc</button>
-        <input type="file" id="fileInput" accept=".md,.txt" style="display:none" />
-        <button id="uploadBtn">Upload</button>
-        <button id="shareBtn">Share</button>
-      </div>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Papertrail — Collaborative documents</title>
+  <link rel="preconnect" href="https://cdn.quilljs.com">
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <style>
+    :root { --blue:#2563eb; --blue-soft:#eff6ff; --ink:#18212f; --muted:#64748b; --line:#e2e8f0; --canvas:#f4f6f8; --sidebar:270px; --page:816px }
+    * { box-sizing:border-box }
+    body { margin:0; color:var(--ink); background:var(--canvas); font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif }
+    button,input,select { font:inherit }
+    button { cursor:pointer }
+    button:disabled { cursor:not-allowed; opacity:.45 }
+    #appHeader { position:sticky; top:0; z-index:30; min-height:76px; padding:12px 20px; display:grid; grid-template-columns:minmax(260px,1fr) auto minmax(380px,1fr); align-items:center; gap:20px; background:rgba(255,255,255,.96); border-bottom:1px solid var(--line); backdrop-filter:blur(12px) }
+    .brand-area,.actions,.menu-row,.user-switcher { display:flex; align-items:center }
+    .brand-area { gap:11px; min-width:0 }
+    .doc-icon { flex:0 0 40px; width:40px; height:40px; display:grid; place-items:center; border-radius:12px; color:white; background:linear-gradient(145deg,#3b82f6,#1d4ed8); box-shadow:0 7px 16px rgba(37,99,235,.22) }
+    #docTitle { width:min(330px,100%); padding:9px 11px; color:var(--ink); font-weight:650; background:transparent; border:1px solid transparent; border-radius:8px; outline:none }
+    #docTitle:hover { border-color:var(--line) }
+    #docTitle:focus { background:white; border-color:#93c5fd; box-shadow:0 0 0 3px var(--blue-soft) }
+    .menu-row { gap:3px }
+    .menu { position:relative }
+    .menu > button { padding:8px 10px; border:0; border-radius:7px; color:#475569; background:transparent }
+    .menu > button:hover { color:var(--ink); background:#f1f5f9 }
+    .menu-dropdown { display:none; position:absolute; top:42px; left:0; z-index:50; min-width:210px; padding:7px; background:white; border:1px solid var(--line); border-radius:12px; box-shadow:0 18px 45px rgba(15,23,42,.16) }
+    .menu-item { width:100%; padding:9px 11px; text-align:left; border:0; border-radius:7px; background:transparent }
+    .menu-item:hover { background:#f1f5f9 }
+    .menu-sep { height:1px; margin:5px 4px; background:var(--line) }
+    .actions { justify-content:flex-end; gap:8px }
+    .user-switcher { gap:8px; padding:5px 9px 5px 6px; border:1px solid var(--line); border-radius:10px; background:#f8fafc }
+    .avatar { width:28px; height:28px; display:grid; place-items:center; border-radius:50%; color:#1e40af; background:#dbeafe; font-size:12px; font-weight:800; text-transform:uppercase }
+    .user-copy { display:flex; flex-direction:column; line-height:1.1 }
+    .user-copy small { color:var(--muted); font-size:10px }
+    #username { padding:0; color:var(--ink); font-weight:650; background:transparent; border:0; outline:none }
+    #status { min-width:62px; color:var(--muted); font-size:12px }
+    .action-btn { min-height:38px; padding:0 13px; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--line); border-radius:9px; color:#334155; background:white; font-weight:650 }
+    .action-btn:hover { background:#f8fafc; border-color:#cbd5e1 }
+    .action-btn.primary { padding:0 17px; color:white; border-color:var(--blue); background:var(--blue); box-shadow:0 5px 12px rgba(37,99,235,.18) }
+    .action-btn.primary:hover { background:#1d4ed8 }
+    .action-btn svg { width:16px; height:16px }
+    #main { min-height:calc(100vh - 76px); display:grid; grid-template-columns:var(--sidebar) minmax(0,1fr) }
+    #sidebar { padding:24px 16px; background:#f8fafc; border-right:1px solid var(--line) }
+    .tabs-header { padding:0 8px 12px; font-size:18px; font-weight:750 }
+    #tabs { margin:0; padding:0; list-style:none }
+    #tabs li:not(.section-label) { margin:4px 0; padding:11px 12px; border-radius:9px; cursor:pointer }
+    #tabs li:not(.section-label):hover { background:#eef2f7 }
+    #tabs li.active { color:#1d4ed8; background:#e8f0ff !important }
+    .section-label { margin:15px 8px 7px; color:#94a3b8; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase }
+    .doc-meta { display:block; margin-top:3px; color:var(--muted); font-size:11px; font-weight:400 }
+    #docArea { min-width:0; padding:20px 28px 48px; display:flex; flex-direction:column; align-items:center }
+    #notice { display:none; width:min(var(--page),100%); margin-bottom:10px; padding:10px 13px; color:#7c5200; background:#fff8df; border:1px solid #fde68a; border-radius:9px; font-size:13px }
+    #toolbar { width:min(var(--page),100%); padding:9px 13px; background:white; border:1px solid var(--line); border-radius:11px; box-shadow:0 3px 10px rgba(15,23,42,.05) }
+    #pageContainer { width:min(var(--page),100%); padding-top:18px }
+    #page { width:100%; min-height:980px; padding:72px 80px; background:white; border:1px solid #e5e7eb; border-radius:4px; box-shadow:0 8px 24px rgba(15,23,42,.08) }
+    #editor { min-height:820px }
+    .ql-container.ql-snow { border:0; font-size:16px }
+    .ql-editor { padding:0; line-height:1.65 }
+    dialog { width:min(440px,calc(100vw - 32px)); padding:0; border:0; border-radius:16px; box-shadow:0 28px 80px rgba(15,23,42,.3) }
+    dialog::backdrop { background:rgba(15,23,42,.48); backdrop-filter:blur(2px) }
+    .dialog-body { padding:24px }
+    .dialog-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px }
+    .dialog-head h2 { margin:0 0 5px; font-size:21px }
+    .dialog-head p { margin:0; color:var(--muted); font-size:13px }
+    .close-btn { width:32px; height:32px; border:0; border-radius:50%; background:#f1f5f9 }
+    .share-summary { margin:20px 0; padding:12px; display:flex; align-items:center; gap:10px; background:#f8fafc; border:1px solid var(--line); border-radius:10px }
+    .share-summary strong,.share-summary small { display:block }
+    .share-summary small { margin-top:2px; color:var(--muted) }
+    .field-label { display:block; margin-bottom:6px; font-size:12px; font-weight:750 }
+    #shareUser { width:100%; padding:11px; border:1px solid #cbd5e1; border-radius:9px; outline:none }
+    #shareUser:focus { border-color:#60a5fa; box-shadow:0 0 0 3px var(--blue-soft) }
+    .dialog-actions { margin-top:20px; display:flex; justify-content:flex-end; gap:8px }
+    .dialog-message { min-height:20px; margin:9px 0 0; color:#b91c1c; font-size:12px }
+    @media (max-width:1050px) {
+      #appHeader { grid-template-columns:1fr auto; gap:10px }
+      #appHeader .center { display:none }
+      .actions { flex-wrap:wrap }
+      #main { grid-template-columns:220px minmax(0,1fr) }
+      #page { padding:55px 48px }
+      .button-label { display:none }
+    }
+    @media (max-width:700px) {
+      #appHeader { position:relative; grid-template-columns:1fr; padding:10px 12px }
+      .actions { justify-content:flex-start }
+      #main { display:block }
+      #sidebar { border-right:0; border-bottom:1px solid var(--line) }
+      #docArea { padding:14px 10px 30px }
+      #page { min-height:700px; padding:36px 25px }
+    }
+  </style>
+</head>
+<body>
+  <header id="appHeader">
+    <div class="brand-area">
+      <div class="doc-icon" aria-label="Papertrail"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.8"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+      <input id="docTitle" value="Untitled document" aria-label="Document title">
     </div>
-
-    <div id="titleNav">
-      <div id="titleNavInner">
-        
-      </div>
+    <div class="center"><div class="menu-row">
+      <div class="menu"><button id="fileMenu">File</button><div class="menu-dropdown"><button class="menu-item" id="newFile">New document</button><button class="menu-item" id="openFile">Open from sidebar</button><div class="menu-sep"></div><button class="menu-item" id="renameFile">Rename</button><button class="menu-item" id="makeCopy">Make a copy</button><div class="menu-sep"></div><button class="menu-item" id="downloadFile">Download text</button><button class="menu-item" id="downloadDoc">Download HTML</button></div></div>
+      <div class="menu"><button id="editMenu">Edit</button><div class="menu-dropdown"><button class="menu-item" id="undoBtn">Undo</button><button class="menu-item" id="redoBtn">Redo</button><div class="menu-sep"></div><button class="menu-item" id="pasteBtn">Paste</button><button class="menu-item" id="pastePlainBtn">Paste without formatting</button><button class="menu-item" id="findReplaceBtn">Find and replace</button></div></div>
+      <div class="menu"><button id="viewMenu">View</button><div class="menu-dropdown"><button class="menu-item" id="fullscreenBtn">Full screen</button><button class="menu-item" id="zoomIn">Zoom in</button><button class="menu-item" id="zoomOut">Zoom out</button></div></div>
+    </div></div>
+    <div class="actions">
+      <div class="user-switcher"><span class="avatar" id="avatar">A</span><span class="user-copy"><small>Viewing as</small><select id="username" aria-label="Current user"><option>alice</option><option>bob</option></select></span></div>
+      <span id="status" aria-live="polite">Ready</span>
+      <button class="action-btn" id="newDoc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span class="button-label">New doc</span></button>
+      <input type="file" id="fileInput" accept=".md,.txt" hidden>
+      <button class="action-btn" id="uploadBtn" title="Import UTF-8 .txt or .md (max 1 MB)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 15v4h14v-4"/></svg><span class="button-label">Import</span></button>
+      <button class="action-btn primary" id="shareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.7 6.6-4.3m-6.6 6.9 6.6 4.3"/></svg><span>Share</span></button>
     </div>
-
-    <div id="main">
-      <aside id="sidebar">
-        <div class="tabs-header">Document tabs <button id="addTab">+</button></div>
-        <ul id="tabs"></ul>
-      </aside>
-
-      <section id="docArea">
-        <div id="toolbar">
-          <select class="ql-header">
-            <option value="1"></option>
-            <option value="2"></option>
-            <option selected></option>
-          </select>
-          <button class="ql-bold"></button>
-          <button class="ql-italic"></button>
-          <button class="ql-underline"></button>
-          <button class="ql-list" value="ordered"></button>
-          <button class="ql-list" value="bullet"></button>
-        </div>
-
-        <div id="pageContainer">
-          <div id="page">
-            <div id="editor"></div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-    <script src="/config.js"></script>
-    <script src="/app.js"></script>
-  </body>
+  </header>
+  <main id="main">
+    <aside id="sidebar"><div class="tabs-header">Documents</div><ul id="tabs"></ul></aside>
+    <section id="docArea">
+      <div id="notice" role="status"></div>
+      <div id="toolbar"><select class="ql-header"><option value="1"></option><option value="2"></option><option selected></option></select><button class="ql-bold"></button><button class="ql-italic"></button><button class="ql-underline"></button><button class="ql-list" value="ordered"></button><button class="ql-list" value="bullet"></button></div>
+      <div id="pageContainer"><div id="page"><div id="editor"></div></div></div>
+    </section>
+  </main>
+  <dialog id="shareDialog">
+    <form class="dialog-body" id="shareForm">
+      <div class="dialog-head"><div><h2>Share document</h2><p>Grant another demo user view-only access.</p></div><button type="button" class="close-btn" id="closeShare" aria-label="Close">×</button></div>
+      <div class="share-summary"><span class="avatar">D</span><span><strong id="shareDocTitle">Document</strong><small>You remain the owner</small></span></div>
+      <label class="field-label" for="shareUser">Share with</label>
+      <select id="shareUser"><option value="bob">Bob</option><option value="alice">Alice</option></select>
+      <p class="dialog-message" id="shareMessage" aria-live="polite"></p>
+      <div class="dialog-actions"><button type="button" class="action-btn" id="cancelShare">Cancel</button><button type="submit" class="action-btn primary" id="confirmShare">Grant access</button></div>
+    </form>
+  </dialog>
+  <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+  <script src="/static/config.js"></script>
+  <script src="/static/app.js"></script>
+</body>
 </html>
