@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+python-multipart
+markdown
+aiofiles
+pytest
+httpx
+pytest-asyncio
